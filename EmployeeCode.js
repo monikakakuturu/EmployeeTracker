@@ -143,23 +143,24 @@ function addEmployeeInfo() {
     employee.first_name = data.firstName;
     employee.last_name = data.lastName;
 
-    inquirer.prompt(departmentQues).then(function (data) {
-      employee.department = data.department;
+    inquirer.prompt(departmentQues).then(function (data1) {
+      employee.department = data1.department;
 
-      inquirer.prompt(roleQues).then(function (data) {
-        employee.role = data.role;
-        employee.salery = data.salery;
+      inquirer.prompt(roleQues).then(function (data2) {
+        employee.role = data2.role;
+        employee.salery = data2.salery;
 
-        inquirer.prompt(hasManagerQues).then(function (data) {
-          employee.hasManager = data.hasManager;
-          if (data.hasManager == "Yes") {
-            inquirer.prompt(hasManagerQues).then(function (data) {
-              employee.managerFirstName = data.firstName;
-              employee.managerLastName = data.lastName;
+        inquirer.prompt(hasManagerQues).then(function (data3) {
+          employee.hasManager = data3.hasManager;
+          if (data3.hasManager == "Yes") {
+            inquirer.prompt(managerQues).then(function (data4) {
+              employee.managerFirstName = data4.firstName;
+              employee.managerLastName = data4.lastName;
+              addEmployee(employee);
             });
+          } else {
+            addEmployee(employee);
           }
-
-          addEmployee(employee);
         });
       });
     });
@@ -170,7 +171,7 @@ function addEmployee(employee) {
   var query = "Select daprtmentId From Department Where ";
   query += "name = ?";
 
-  console.log(employee.department);
+  //console.log(employee.department);
   connection.query(query, [employee.department], function (err, res) {
     if (err) throw err;
     var query1 = "Insert Into Role (title, salery, department_id)";
@@ -181,32 +182,51 @@ function addEmployee(employee) {
       [employee.role, employee.salery, res[0].daprtmentId],
       function (err, res1) {
         if (err) throw err;
-        console.log(res1);
+        //console.log(res1);
         var query2 =
           "Insert Into Employee (first_name, last_name, role_id, manager_id)";
         query2 += " Values (?, ?, ?, ?)";
-        var managerId = null;
+
         if (employee.hasManager == "Yes") {
+          var query3 = "Select employeeId From Employee ";
+          query3 += "Where Employee.first_name=? And Employee.last_name=?";
           connection.query(
-            query2,
-            [employee.managerFirstName, employee.managerLastName, null, null],
+            query3,
+            [employee.managerFirstName, employee.managerLastName],
             function (err, res2) {
               if (err) throw err;
-              console.log(res2);
-              managerId = res2.insertId;
-              console.log(managerId);
+              if (res2.length > 0) {
+                connection.query(
+                  query2,
+                  [
+                    employee.first_name,
+                    employee.last_name,
+                    res1.insertId,
+                    res2[0].employeeId,
+                  ],
+                  function (err, res3) {
+                    if (err) throw err;
+                    initEmployee();
+                  }
+                );
+              } else {
+                console.log(
+                  "Please select the existing manager's first and last names"
+                );
+                initEmployee();
+              }
+            }
+          );
+        } else {
+          connection.query(
+            query2,
+            [employee.first_name, employee.last_name, res1.insertId, null],
+            function (err, res3) {
+              if (err) throw err;
+              initEmployee();
             }
           );
         }
-
-        connection.query(
-          query2,
-          [employee.first_name, employee.last_name, res1.insertId, managerId],
-          function (err, res3) {
-            if (err) throw err;
-            initEmployee();
-          }
-        );
       }
     );
   });
@@ -239,26 +259,17 @@ function viewEmployeeInfo() {
       info.Title = res[i].title;
       info.Dapartment = res[i].name;
       info.salery = res[i].salery;
-      info.ManagerId = res[i].manager_id;
 
-      // Work this to get manager name and display
-      // if (res[i].manager_id != null) {
-      //   var query1 = "Select Employee.first_name, Employee.last_name";
-      //   query1 += " From Employee Inner Join Employee E2 On ? = E2.employeeId";
-      //   //console.log(res[i].manager_id);
-      //   connection.query(query1, [res[i].manager_id], function (err, res1) {
-      //     if (err) throw err;
-      //     //console.log(res1);
-      //     if (res1.length > 0) {
-      //       console.log(res1[0]);
-      //       info.Manager = Json.stringify(
-      //         res1[0].first_name + " " + res1[0].last_name
-      //       );
-      //     }
-      //   });
-      // } else {
-      //   info.Manager = null;
-      // }
+      if (res[i].manager_id != null) {
+        for (var j = 0; j < res.length; j++) {
+          if (res[i].manager_id == res[j].employeeId) {
+            info.Manager = res[j].first_name + " " + res[j].last_name;
+            break;
+          }
+        }
+      } else {
+        info.Manager = null;
+      }
       table.push(info);
     }
 
@@ -276,5 +287,36 @@ function viewDepartmentInfo() {
 }
 
 function updateEmployeeRoles() {
-  initEmployee();
+  inquirer.prompt(employeeQues).then(function (data) {
+    var firstName = data.firstName;
+    var lastName = data.lastName;
+
+    var query = "Select Employee.role_id From Employee ";
+    query += "Where Employee.first_name = ? And Employee.last_name = ?";
+
+    connection.query(query, [firstName, lastName], function (err, res) {
+      if (err) throw err;
+      if (res.length > 0) {
+        var roleId = res[0].role_id;
+        inquirer.prompt(roleQues).then(function (data1) {
+          var query1 = "Update Role Set title = ?, salery = ? ";
+          query1 += "Where Role.roleId = ?";
+
+          connection.query(
+            query1,
+            [data1.role, data1.salery, roleId],
+            function (err, res1) {
+              if (err) throw err;
+              initEmployee();
+            }
+          );
+        });
+      } else {
+        console.log(
+          "None of the records match with Employee first name and last name"
+        );
+        initEmployee();
+      }
+    });
+  });
 }
